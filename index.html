@@ -239,6 +239,13 @@ html.dark .btn-green{background:linear-gradient(135deg,#15803d,#166534);color:#d
 .gh-hint{font-size:.74rem;color:var(--muted);line-height:1.5;margin-bottom:.8rem}
 .gh-hint code{background:var(--purple-soft);padding:.05rem .3rem;border-radius:4px}
 
+.commit-list{max-height:min(55vh,26rem);overflow-y:auto;display:flex;flex-direction:column;gap:.45rem;margin-bottom:.9rem;scrollbar-width:thin;scrollbar-color:var(--purple-l) var(--border)}
+.commit-item{border:1px solid var(--border);border-radius:10px;padding:.55rem .7rem;background:var(--bg)}
+.commit-item .commit-msg{font-size:.82rem;font-weight:600;line-height:1.35}
+.commit-item .commit-meta{font-size:.72rem;color:var(--muted);margin-top:.15rem}
+.commit-item .commit-meta a{color:var(--purple);text-decoration:none;font-weight:700}
+.commit-item .commit-meta a:hover{text-decoration:underline}
+
 table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
 th{
   position:sticky;top:0;z-index:20;
@@ -683,6 +690,7 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
       <button id="btn-add" class="btn btn-primary">+ Añadir</button>
       <button id="btn-download-page" type="button" class="btn btn-outline" title="Descargar copia idéntica de esta página">Descargar página</button>
       <button id="btn-publish" type="button" class="btn btn-green" title="Guardar los cambios actuales en la web (GitHub Pages)">🌐 Publicar en la web</button>
+      <button id="btn-history" type="button" class="btn btn-outline" title="Historial de cambios publicados en la web">📜 Historial</button>
       <div class="export-wrap">
         <button id="btn-export" type="button" class="btn btn-yellow">Exportar ▾</button>
         <div id="export-menu" class="export-menu" role="menu">
@@ -848,6 +856,19 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
     <div class="dialog-actions">
       <button type="button" class="btn btn-outline" id="gh-cancel">Cerrar</button>
       <button type="button" class="btn btn-primary" id="gh-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Historial de commits publicados -->
+<div id="commits-dialog" class="dialog hidden">
+  <div class="dialog-box" style="max-width:560px">
+    <h3>📜 Historial de la web</h3>
+    <p style="margin-bottom:.75rem">Cambios publicados en el repositorio <strong id="commits-repo">abra24ia/la_tajada2027</strong>.</p>
+    <div id="commits-list" class="commit-list"></div>
+    <div class="dialog-actions">
+      <a id="commits-github-link" class="btn btn-outline" href="https://github.com/abra24ia/la_tajada2027/commits/main" target="_blank" rel="noopener" style="text-decoration:none">Ver todo en GitHub</a>
+      <button type="button" class="btn btn-primary" id="commits-close">Cerrar</button>
     </div>
   </div>
 </div>
@@ -2401,7 +2422,7 @@ function placeOverlayNearAnchor(ov, box) {
     if (!h) return;
     if (h + 24 >= vh) { box.style.marginTop = '8px'; return; } // pantalla pequeña: arriba, el overlay permite scroll
     let top = a.y - Math.min(Math.round(h * 0.35), 110); // un poco por encima del punto pulsado
-    top = Math.max(8, Math.min(top, vh - h - 8));
+    top = Math.max(16, Math.min(top, vh - h - 16));
     box.style.marginTop = top + 'px';
   } catch (e) {}
 }
@@ -3741,6 +3762,70 @@ document.getElementById('btn-publish')?.addEventListener('click', () => {
     'Publicar en la web'
   );
 });
+
+/* ===== Historial de commits publicados ===== */
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/[\u0026\u003C\u003E\u0022\u0027]/g, function (ch) {
+      return '\u0026#' + ch.charCodeAt(0) + ';';
+    });
+}
+function closeCommitHistory() {
+  document.getElementById('commits-dialog')?.classList.add('hidden');
+}
+async function openCommitHistory() {
+  const dlg = document.getElementById('commits-dialog');
+  const list = document.getElementById('commits-list');
+  if (!dlg || !list) return;
+  const cfg = loadGhCfg();
+  document.getElementById('commits-repo').textContent = cfg.repo;
+  document.getElementById('commits-github-link').href = 'https://github.com/' + cfg.repo + '/commits/' + cfg.branch;
+  list.innerHTML = '<p style="color:var(--muted);font-size:.82rem">Cargando…</p>';
+  dlg.classList.remove('hidden');
+  const reposition = () => {
+    placeOverlayNearAnchor(dlg, dlg.querySelector('.dialog-box'));
+    requestAnimationFrame(() => placeOverlayNearAnchor(dlg, dlg.querySelector('.dialog-box')));
+  };
+  reposition();
+  try {
+    const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    if (cfg.token) headers['Authorization'] = 'Bearer ' + cfg.token;
+    const res = await fetch('https://api.github.com/repos/' + cfg.repo + '/commits?per_page=100', { headers: headers, cache: 'no-store' });
+    if (!res.ok) {
+      let m = 'HTTP ' + res.status;
+      try { m = (await res.json()).message || m; } catch (e) {}
+      throw new Error(m);
+    }
+    const commits = await res.json();
+    if (!Array.isArray(commits) || !commits.length) {
+      list.innerHTML = '<p style="color:var(--muted);font-size:.82rem">Sin commits todavía.</p>';
+      reposition();
+      return;
+    }
+    list.innerHTML = commits.map(function (c) {
+      const d = new Date(c.commit.author && c.commit.author.date);
+      const when = isNaN(d) ? '' : d.toLocaleString('es-ES');
+      const who = (c.commit.author && c.commit.author.name) || (c.author && c.author.login) || '';
+      const msg = String(c.commit.message || '').split('\n')[0];
+      const sha = c.sha ? c.sha.slice(0, 7) : '';
+      return '<div class="commit-item">' +
+        '<div class="commit-msg">' + escHtml(msg) + '</div>' +
+        '<div class="commit-meta">' + escHtml(when) + (who ? ' · ' + escHtml(who) : '') +
+        (sha ? ' · <a href="https://github.com/' + escHtml(cfg.repo) + '/commit/' + escHtml(c.sha) + '" target="_blank" rel="noopener">' + escHtml(sha) + '</a>' : '') +
+        '</div></div>';
+    }).join('');
+    reposition();
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = '<p style="color:#b91c1c;font-size:.82rem">No se pudo cargar el historial: ' + escHtml(String(e.message || e)) + '</p>';
+    reposition();
+  }
+}
+document.getElementById('btn-history')?.addEventListener('click', openCommitHistory);
+document.getElementById('commits-close')?.addEventListener('click', closeCommitHistory);
+document.getElementById('commits-dialog')?.addEventListener('click', function (e) {
+  if (e.target.id === 'commits-dialog') closeCommitHistory();
+});
 function closeExportMenu() {
   document.getElementById('export-menu')?.classList.remove('open');
   document.querySelector('.export-wrap')?.classList.remove('menu-open');
@@ -3889,6 +3974,7 @@ document.addEventListener('keydown', e => {
     else if (document.getElementById('ficha-overlay')?.classList.contains('open')) closeFicha();
     else if (document.getElementById('sheet-view')?.classList.contains('open')) closeSheet();
     else if (!document.getElementById('github-dialog')?.classList.contains('hidden')) closeGithubConfig();
+    else if (!document.getElementById('commits-dialog')?.classList.contains('hidden')) closeCommitHistory();
     else if (!document.getElementById('drive-dialog')?.classList.contains('hidden')) closeDriveConfig();
   }
 });
