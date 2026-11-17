@@ -66,7 +66,9 @@ body{
   color:var(--text);
   line-height:1.45;
   min-height:100%;
-  animation:pageIn 0.45s var(--ease) both;
+  /* 'backwards' en vez de 'both': 'both' dejaba una transform en el body que
+     rompía el position:fixed de diálogos y barras (salían a mitad del documento) */
+  animation:pageIn 0.45s var(--ease) backwards;
 }
 @keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -195,8 +197,10 @@ html.dark .pay-alerts .pa-ok{color:#86efac}
 }
 
 #table-container{
-  overflow-x:auto;overflow-y:visible;
+  overflow-x:scroll;overflow-y:visible;
   -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+  scrollbar-color:var(--purple-l) var(--border);
   border:1px solid var(--border);
   border-radius:var(--radius);
   background:var(--card);
@@ -205,6 +209,35 @@ html.dark .pay-alerts .pa-ok{color:#86efac}
 }
 #table-container::-webkit-scrollbar{height:10px}
 #table-container::-webkit-scrollbar-thumb{background:var(--purple-l);border-radius:6px}
+
+/* Barra horizontal flotante, sincronizada con la tabla */
+#hscroll{
+  position:fixed;left:1rem;right:1rem;bottom:.55rem;height:16px;z-index:80;
+  display:none;background:var(--card);border:1px solid var(--border);border-radius:9px;
+  padding:2px 3px;box-shadow:var(--shadow);cursor:pointer;
+}
+#hscroll.visible{display:block}
+#hscroll .hscroll-thumb{
+  position:absolute;top:2px;bottom:2px;
+  background:linear-gradient(90deg,var(--purple-l),var(--purple));
+  border-radius:5px;cursor:grab;
+}
+#hscroll .hscroll-thumb:active{cursor:grabbing;background:var(--purple)}
+@media print{#hscroll{display:none !important}}
+
+.btn-green{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff}
+.btn-green:hover{filter:brightness(1.05)}
+html.dark .btn-green{background:linear-gradient(135deg,#15803d,#166534);color:#dcfce7}
+
+.gh-field{margin-bottom:.7rem}
+.gh-field label{display:block;font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:.25rem}
+.gh-field input{
+  width:100%;padding:.5rem .65rem;border-radius:10px;font-size:.85rem;
+  border:1px solid var(--border);background:var(--bg);color:var(--text);
+}
+.gh-field input:focus{outline:none;border-color:var(--purple-l);box-shadow:0 0 0 3px var(--purple-soft)}
+.gh-hint{font-size:.74rem;color:var(--muted);line-height:1.5;margin-bottom:.8rem}
+.gh-hint code{background:var(--purple-soft);padding:.05rem .3rem;border-radius:4px}
 
 table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
 th{
@@ -543,7 +576,7 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
 .dialog{
   position:fixed;inset:0;background:rgba(15,23,42,.45);
   backdrop-filter:blur(4px);
-  display:flex;align-items:center;justify-content:center;z-index:10000;padding:1rem;
+  display:flex;align-items:center;justify-content:center;z-index:30000;padding:1rem;overflow:auto;
   animation:fadeIn 0.2s ease both;
 }
 .dialog.hidden{display:none}
@@ -579,7 +612,7 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
 
 #pay-alert-dialog.dialog,
 #pay-alert-dialog{
-  z-index:10000 !important;
+  z-index:30000 !important;
   position:fixed !important;
   inset:0 !important;
   left:0 !important; right:0 !important; top:0 !important; bottom:0 !important;
@@ -601,7 +634,7 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
 #pay-alert-dialog .dialog-card,
 #pay-alert-dialog .dialog-box{
   position:relative;
-  z-index:10001;
+  z-index:30001;
   background:var(--card,#fff);
   border-radius:16px;
   padding:1.35rem;
@@ -649,6 +682,7 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
       <input id="search" type="text" placeholder="Buscar nombre, DNI, email…">
       <button id="btn-add" class="btn btn-primary">+ Añadir</button>
       <button id="btn-download-page" type="button" class="btn btn-outline" title="Descargar copia idéntica de esta página">Descargar página</button>
+      <button id="btn-publish" type="button" class="btn btn-green" title="Guardar los cambios actuales en la web (GitHub Pages)">🌐 Publicar en la web</button>
       <div class="export-wrap">
         <button id="btn-export" type="button" class="btn btn-yellow">Exportar ▾</button>
         <div id="export-menu" class="export-menu" role="menu">
@@ -786,6 +820,40 @@ html.dark .btn-lock.unlocked{background:#14532d;color:#bbf7d0;border-color:#1665
     </div>
   </div>
 </div>
+
+<!-- Publicar en la web (GitHub Pages) -->
+<div id="github-dialog" class="dialog hidden">
+  <div class="dialog-box" style="max-width:520px">
+    <h3>🌐 Publicar en la web</h3>
+    <p style="margin-bottom:.75rem">Guarda esta página con los datos actuales en <strong>abra24ia.github.io/la_tajada2027</strong>. Necesitas un <strong>token de acceso personal</strong> de GitHub.</p>
+    <div class="gh-field">
+      <label for="gh-token">Token de GitHub</label>
+      <input type="password" id="gh-token" placeholder="ghp_… o github_pat_…" autocomplete="off">
+    </div>
+    <div class="gh-field">
+      <label for="gh-repo">Repositorio</label>
+      <input type="text" id="gh-repo" placeholder="abra24ia/la_tajada2027">
+    </div>
+    <div style="display:flex;gap:.6rem">
+      <div class="gh-field" style="flex:1">
+        <label for="gh-path">Archivo</label>
+        <input type="text" id="gh-path" placeholder="index.html">
+      </div>
+      <div class="gh-field" style="flex:1">
+        <label for="gh-branch">Rama</label>
+        <input type="text" id="gh-branch" placeholder="main">
+      </div>
+    </div>
+    <p class="gh-hint">Crea el token en <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> (clásico, con el permiso <code>repo</code>). Solo se guarda en este navegador.</p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" id="gh-cancel">Cerrar</button>
+      <button type="button" class="btn btn-primary" id="gh-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Barra horizontal flotante sincronizada con la tabla -->
+<div id="hscroll" aria-hidden="true"><div class="hscroll-thumb"></div></div>
 
 <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
 
@@ -978,6 +1046,8 @@ function openFicha(id, isNew) {
   ov.classList.add('open');
   ov.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  // En primer plano, a la altura de la fila pulsada
+  placeOverlayNearAnchor(ov, ov.querySelector('.ficha-card'));
   // foco en nombre
   setTimeout(() => form.querySelector('[name="nombre"]')?.focus(), 50);
 }
@@ -1845,12 +1915,12 @@ function openPayAlertConfig() {
     document.body.appendChild(dlg);
   }
   dlg.classList.remove('hidden');
-  dlg.style.cssText = 'display:flex !important;position:fixed !important;inset:0 !important;z-index:10000 !important;align-items:center;justify-content:center;background:rgba(15,23,42,.55);padding:1rem;margin:0;width:100vw;height:100dvh;';
+  dlg.style.cssText = 'display:flex !important;position:fixed !important;inset:0 !important;z-index:30000 !important;align-items:center;justify-content:center;background:rgba(15,23,42,.55);padding:1rem;margin:0;width:100vw;height:100dvh;';
   dlg.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
-  // Centrar donde está el usuario (viewport actual)
-  try { dlg.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
   const card = dlg.querySelector('.dialog-card, .dialog-box');
+  // En primer plano, a la altura del botón pulsado
+  placeOverlayNearAnchor(dlg, card);
   if (card) {
     try { card.focus?.(); } catch (e) {}
   }
@@ -2298,16 +2368,55 @@ function onCellClick(e) {
   });
 }
 
+/* ===== Ventanas en primer plano, a la altura de lo que está viendo el usuario ===== */
+window.__lt27Anchor = (function () {
+  let x = null, y = null;
+  document.addEventListener('pointerdown', function (e) {
+    if (e.clientX || e.clientY) { x = e.clientX; y = e.clientY; }
+  }, true);
+  document.addEventListener('focusin', function (e) {
+    const t = e.target;
+    if (t && t.getBoundingClientRect) {
+      const r = t.getBoundingClientRect();
+      if (r.width || r.height) { x = r.left + r.width / 2; y = r.top + Math.min(r.height / 2, 80); }
+    }
+  }, true);
+  return function () {
+    if (x != null && y != null) return { x: x, y: y };
+    return { x: (window.innerWidth || 1024) / 2, y: (window.innerHeight || 768) / 2 };
+  };
+})();
+
+function placeOverlayNearAnchor(ov, box) {
+  if (!ov || !box) return;
+  try {
+    const a = (window.__lt27Anchor ? window.__lt27Anchor() : null) ||
+      { x: (window.innerWidth || 1024) / 2, y: (window.innerHeight || 768) / 2 };
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    ov.style.alignItems = 'flex-start';
+    ov.style.justifyContent = 'center';
+    box.style.marginTop = '';
+    const h = box.offsetHeight || 0;
+    if (!h) return;
+    if (h + 24 >= vh) { box.style.marginTop = '8px'; return; } // pantalla pequeña: arriba, el overlay permite scroll
+    let top = a.y - Math.min(Math.round(h * 0.35), 110); // un poco por encima del punto pulsado
+    top = Math.max(8, Math.min(top, vh - h - 8));
+    box.style.marginTop = top + 'px';
+  } catch (e) {}
+}
+
 function showConfirm(msg, onOk, onCancel, title='Confirmar') {
   const dlg = document.getElementById('confirm-dialog');
   document.getElementById('dlg-title').textContent = title;
   document.getElementById('confirm-msg').innerHTML = msg;
   dlg.classList.remove('hidden');
+  placeOverlayNearAnchor(dlg, dlg.querySelector('.dialog-box'));
   const ok = document.getElementById('confirm-ok');
   const cancel = document.getElementById('confirm-cancel');
   const cleanup = () => { dlg.classList.add('hidden'); ok.onclick=null; cancel.onclick=null; };
   ok.onclick = () => { cleanup(); onOk(); };
   cancel.onclick = () => { cleanup(); onCancel && onCancel(); };
+  setTimeout(() => { try { ok.focus(); } catch (e) {} }, 40);
 }
 
 // ===== BULK =====
@@ -2989,70 +3098,68 @@ function exportWord() {
   downloadBytes(bytes, 'Pena_Mixta_La_Tajada_2027.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 
-function exportHTML() {
+function buildPageHTML(options) {
+  options = options || {};
   // Copia IDÉNTICA de la app completa, con los datos actuales embebidos
-  try {
-    const marker = 'const ORIGINAL_DATA = ';
-    let source = document.documentElement.outerHTML;
+  const marker = 'const ORIGINAL_DATA = ';
+  let source = document.documentElement.outerHTML;
 
-    // Asegurar doctype
-    if (!/^\s*<!DOCTYPE/i.test(source)) {
-      source = '<!DOCTYPE html>\n' + source;
+  // Asegurar doctype
+  if (!/^\s*<!DOCTYPE/i.test(source)) {
+    source = '<!DOCTYPE html>\n' + source;
+  }
+
+  const idx = source.indexOf(marker);
+  if (idx < 0) {
+    throw new Error('No se pudo localizar los datos en la página.');
+  }
+
+  // Sustituir el array ORIGINAL_DATA por el estado actual
+  const startArr = idx + marker.length;
+  if (source[startArr] !== '[') {
+    throw new Error('Formato de datos inesperado.');
+  }
+  let depth = 0;
+  let endArr = -1;
+  let inStr = null;
+  let esc = false;
+  for (let i = startArr; i < source.length; i++) {
+    const ch = source[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\\\') { esc = true; continue; }
+      if (ch === inStr) inStr = null;
+      continue;
     }
-
-    const idx = source.indexOf(marker);
-    if (idx < 0) {
-      alert('No se pudo localizar los datos en la página para exportar.');
-      return;
+    if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; continue; }
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (depth === 0) { endArr = i + 1; break; }
     }
+  }
+  if (endArr < 0) {
+    throw new Error('No se pudo cerrar el bloque de datos.');
+  }
 
-    // Sustituir el array ORIGINAL_DATA por el estado actual
-    const startArr = idx + marker.length;
-    if (source[startArr] !== '[') {
-      alert('Formato de datos inesperado al exportar.');
-      return;
-    }
-    let depth = 0;
-    let endArr = -1;
-    let inStr = null;
-    let esc = false;
-    for (let i = startArr; i < source.length; i++) {
-      const ch = source[i];
-      if (inStr) {
-        if (esc) { esc = false; continue; }
-        if (ch === '\\\\') { esc = true; continue; }
-        if (ch === inStr) inStr = null;
-        continue;
-      }
-      if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; continue; }
-      if (ch === '[') depth++;
-      else if (ch === ']') {
-        depth--;
-        if (depth === 0) { endArr = i + 1; break; }
-      }
-    }
-    if (endArr < 0) {
-      alert('No se pudo cerrar el bloque de datos al exportar.');
-      return;
-    }
+  // Snapshot completo: datos actuales + embebidos (no se pierden socios al descargar)
+  const toEmbed = (typeof mergeById === 'function')
+    ? mergeById(ORIGINAL_DATA, data)
+    : data;
+  const snapshot = JSON.stringify(toEmbed.map(row => {
+    const d = Object.assign({}, row);
+    delete d._sid;
+    return d;
+  }));
+  // Evitar cierre accidental de la etiqueta script en el JSON
+  const safeJson = snapshot
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/<\//g, '\\u003c/');
 
-    // Snapshot completo: datos actuales + embebidos (no se pierden socios al descargar)
-    const toEmbed = (typeof mergeById === 'function')
-      ? mergeById(ORIGINAL_DATA, data)
-      : data;
-    const snapshot = JSON.stringify(toEmbed.map(row => {
-      const d = Object.assign({}, row);
-      delete d._sid;
-      return d;
-    }));
-    // Evitar cierre accidental de la etiqueta script en el JSON
-    const safeJson = snapshot
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/<\//g, '\\u003c/');
+  let out = source.slice(0, startArr) + safeJson + source.slice(endArr);
 
-    let out = source.slice(0, startArr) + safeJson + source.slice(endArr);
-
+  if (options.renameKeys !== false) {
     // Nueva clave de almacenamiento (incluye v5 real) para no mezclar con otra copia
     const ver = String(Date.now());
     out = out.replace(/lt27_data_v1794762948035/g, 'lt27_data_v' + ver);
@@ -3071,7 +3178,14 @@ function exportHTML() {
       /<title>[^<]*<\/title>/i,
       '<title>Peña Mixta La Tajada 2027 — Copia</title>'
     );
+  }
 
+  return out;
+}
+
+function exportHTML() {
+  try {
+    const out = buildPageHTML();
     downloadBlob(out, 'latajada2027.html', 'text/html;charset=utf-8');
   } catch (e) {
     alert('Error al exportar HTML: ' + e.message);
@@ -3222,6 +3336,7 @@ function openDriveConfig() {
   const lab = document.getElementById('drive-filename-label');
   if (lab) lab.textContent = GDRIVE.fileName;
   dlg.classList.remove('hidden');
+  placeOverlayNearAnchor(dlg, dlg.querySelector('.dialog-box'));
 }
 
 function closeDriveConfig() {
@@ -3406,6 +3521,190 @@ else setDriveStatus('off', '📁 Drive');
 document.getElementById('btn-download-page')?.addEventListener('click', () => {
   exportHTML();
 });
+
+/* ===== Barra horizontal flotante, sincronizada con la tabla ===== */
+(function initHScroll() {
+  const bar = document.getElementById('hscroll');
+  const tc = document.getElementById('table-container');
+  if (!bar || !tc) return;
+  const thumb = bar.querySelector('.hscroll-thumb');
+  let rafPending = false;
+
+  function update() {
+    rafPending = false;
+    try {
+      const sw = tc.scrollWidth, cw = tc.clientWidth;
+      if (sw <= cw + 2) { bar.classList.remove('visible'); return; }
+      const r = tc.getBoundingClientRect();
+      // ocultar si la propia barra de la tabla ya está a la vista, o la tabla no se ve
+      if (r.bottom <= window.innerHeight - 6 || r.top >= window.innerHeight - 6 || r.bottom <= 0) {
+        bar.classList.remove('visible');
+        return;
+      }
+      bar.classList.add('visible');
+      // alinear horizontalmente con la tabla
+      bar.style.left = Math.max(8, r.left) + 'px';
+      bar.style.right = Math.max(8, window.innerWidth - Math.max(r.right, 8)) + 'px';
+      const trackW = bar.offsetWidth - 8; // bordes + padding
+      const ratio = Math.max(0.04, cw / sw);
+      const tw = Math.max(36, Math.round(trackW * ratio));
+      thumb.style.width = tw + 'px';
+      const maxScroll = sw - cw;
+      const maxLeft = Math.max(0, trackW - tw);
+      const frac = maxScroll > 0 ? (tc.scrollLeft / maxScroll) : 0;
+      thumb.style.left = Math.round(frac * maxLeft) + 'px';
+    } catch (e) {}
+  }
+  function scheduleUpdate() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(update);
+  }
+
+  // Arrastrar el pulgar o pulsar en la barra
+  let dragging = false;
+  function scrollToPointer(clientX) {
+    const br = bar.getBoundingClientRect();
+    const trackStart = br.left + 4;
+    const trackW = br.width - 8;
+    const tw = thumb.offsetWidth || 36;
+    const maxLeft = Math.max(0, trackW - tw);
+    let p = clientX - trackStart - tw / 2;
+    p = Math.max(0, Math.min(p, maxLeft));
+    const frac = maxLeft > 0 ? p / maxLeft : 0;
+    tc.scrollLeft = frac * (tc.scrollWidth - tc.clientWidth);
+  }
+  bar.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    dragging = true;
+    scrollToPointer(e.clientX);
+    try { bar.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  bar.addEventListener('pointermove', function (e) {
+    if (dragging) { e.preventDefault(); scrollToPointer(e.clientX); }
+  });
+  bar.addEventListener('pointerup', function (e) { dragging = false; });
+  bar.addEventListener('pointercancel', function () { dragging = false; });
+
+  document.addEventListener('scroll', scheduleUpdate, true);
+  window.addEventListener('resize', scheduleUpdate);
+  tc.addEventListener('scroll', scheduleUpdate);
+  setInterval(scheduleUpdate, 1500);
+  scheduleUpdate();
+})();
+
+/* ===== Publicar en la web (GitHub Pages) ===== */
+const GH_CFG_KEY = 'lt27_github_cfg_v1';
+const GH_DEFAULTS = { repo: 'abra24ia/la_tajada2027', path: 'index.html', branch: 'main', token: '' };
+function loadGhCfg() {
+  try {
+    return Object.assign({}, GH_DEFAULTS, JSON.parse(localStorage.getItem(GH_CFG_KEY) || 'null') || {});
+  } catch (e) { return Object.assign({}, GH_DEFAULTS); }
+}
+function saveGhCfg(cfg) {
+  try { localStorage.setItem(GH_CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
+}
+function openGithubConfig() {
+  const dlg = document.getElementById('github-dialog');
+  if (!dlg) return;
+  const cfg = loadGhCfg();
+  document.getElementById('gh-token').value = cfg.token || '';
+  document.getElementById('gh-repo').value = cfg.repo;
+  document.getElementById('gh-path').value = cfg.path;
+  document.getElementById('gh-branch').value = cfg.branch;
+  dlg.classList.remove('hidden');
+  placeOverlayNearAnchor(dlg, dlg.querySelector('.dialog-box'));
+  setTimeout(() => { try { document.getElementById('gh-token').focus(); } catch (e) {} }, 50);
+}
+function closeGithubConfig() {
+  document.getElementById('github-dialog')?.classList.add('hidden');
+}
+document.getElementById('gh-cancel')?.addEventListener('click', closeGithubConfig);
+document.getElementById('github-dialog')?.addEventListener('click', function (e) {
+  if (e.target.id === 'github-dialog') closeGithubConfig();
+});
+document.getElementById('gh-save')?.addEventListener('click', () => {
+  const cfg = {
+    token: (document.getElementById('gh-token')?.value || '').trim(),
+    repo: (document.getElementById('gh-repo')?.value || '').trim() || GH_DEFAULTS.repo,
+    path: (document.getElementById('gh-path')?.value || '').trim() || GH_DEFAULTS.path,
+    branch: (document.getElementById('gh-branch')?.value || '').trim() || GH_DEFAULTS.branch
+  };
+  saveGhCfg(cfg);
+  closeGithubConfig();
+  showToast({ kind: 'ok', title: 'Configuración guardada', msg: 'Ya puedes publicar en la web.', ttl: 5000 });
+});
+async function publishToWeb() {
+  const cfg = loadGhCfg();
+  const btn = document.getElementById('btn-publish');
+  if (!cfg.token) {
+    showToast({ kind: 'warn', title: 'Falta el token de GitHub', msg: 'Configúralo para poder publicar en la web.', ttl: 6000 });
+    openGithubConfig();
+    return;
+  }
+  const prev = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Publicando…'; }
+  try {
+    const html = buildPageHTML({ renameKeys: false });
+    // Base64 seguro para UTF-8
+    const bytes = new TextEncoder().encode(html);
+    let bin = '';
+    const CH = 32768;
+    for (let i = 0; i < bytes.length; i += CH) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    }
+    const b64 = btoa(bin);
+    const headers = {
+      'Authorization': 'Bearer ' + cfg.token,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json'
+    };
+    // SHA del archivo actual (para actualizarlo); null si aún no existe
+    let sha = null;
+    const metaRes = await fetch('https://api.github.com/repos/' + cfg.repo + '/contents/' + encodeURIComponent(cfg.path) + '?ref=' + encodeURIComponent(cfg.branch), { headers: headers, cache: 'no-store' });
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      sha = meta.sha;
+    } else if (metaRes.status !== 404) {
+      let m = 'HTTP ' + metaRes.status;
+      try { m = (await metaRes.json()).message || m; } catch (e) {}
+      throw new Error('GitHub: ' + m);
+    }
+    const body = {
+      message: 'Actualización La Tajada 2027 · ' + new Date().toLocaleString('es-ES') + ' · ' + data.length + ' socios',
+      content: b64,
+      branch: cfg.branch
+    };
+    if (sha) body.sha = sha;
+    const res = await fetch('https://api.github.com/repos/' + cfg.repo + '/contents/' + encodeURIComponent(cfg.path), {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      let m = 'HTTP ' + res.status;
+      try { m = (await res.json()).message || m; } catch (e) {}
+      throw new Error(m);
+    }
+    showToast({ kind: 'ok', title: 'Publicado en la web', msg: 'La página abra24ia.github.io/la_tajada2027 se actualizará en 1-2 minutos.', ttl: 9000 });
+  } catch (e) {
+    console.error(e);
+    showToast({ kind: 'err', title: 'No se pudo publicar', msg: String(e.message || e), ttl: 10000 });
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prev; }
+  }
+}
+document.getElementById('btn-publish')?.addEventListener('click', () => {
+  const cfg = loadGhCfg();
+  if (!cfg.token) { openGithubConfig(); return; }
+  showConfirm(
+    '¿Guardar los cambios actuales (' + data.length + ' socios) en la web?<br><span style="font-size:.78rem">Se actualizará <strong>abra24ia.github.io/la_tajada2027</strong> en 1-2 minutos.</span>',
+    () => { publishToWeb(); },
+    null,
+    'Publicar en la web'
+  );
+});
 function closeExportMenu() {
   document.getElementById('export-menu')?.classList.remove('open');
   document.querySelector('.export-wrap')?.classList.remove('menu-open');
@@ -3553,6 +3852,8 @@ document.addEventListener('keydown', e => {
     if (!dlg.classList.contains('hidden')) document.getElementById('confirm-cancel').click();
     else if (document.getElementById('ficha-overlay')?.classList.contains('open')) closeFicha();
     else if (document.getElementById('sheet-view')?.classList.contains('open')) closeSheet();
+    else if (!document.getElementById('github-dialog')?.classList.contains('hidden')) closeGithubConfig();
+    else if (!document.getElementById('drive-dialog')?.classList.contains('hidden')) closeDriveConfig();
   }
 });
 
