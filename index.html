@@ -1798,6 +1798,7 @@ function saveData() {
   localStorage.setItem('lt27_group_v1794762948035', groupByFamily ? '1' : '0');
   updateStatus();
   scheduleCloudSave();
+  scheduleWebPublish();
 }
 function updateStatus() {
   const f = getFiltered();
@@ -3634,7 +3635,35 @@ document.getElementById('gh-save')?.addEventListener('click', () => {
   closeGithubConfig();
   showToast({ kind: 'ok', title: 'Configuración guardada', msg: 'Ya puedes publicar en la web.', ttl: 5000 });
 });
-async function publishToWeb() {
+/* ===== Publicación automática: cada cambio se publica en la web ===== */
+let webPublishTimer = null;
+let webPublishing = false;
+let webPublishLastAt = 0;
+let webPublishNoTokenHinted = false;
+const WEB_PUBLISH_DEBOUNCE_MS = 90000;   // espera tras el último cambio
+const WEB_PUBLISH_MIN_GAP_MS = 120000;   // mínimo entre publicaciones automáticas
+
+function scheduleWebPublish(delayMs) {
+  // Solo desde la página publicada (evita publicar copias locales con otras claves)
+  if (location.hostname !== 'abra24ia.github.io') return;
+  const cfg = loadGhCfg();
+  if (!cfg.token) {
+    if (!webPublishNoTokenHinted && canEdit) {
+      webPublishNoTokenHinted = true;
+      showToast({ kind: 'info', title: 'Publicación automática', msg: 'Configura tu token de GitHub en «Publicar en la web» para que los cambios se publiquen solos.', ttl: 9000 });
+    }
+    return;
+  }
+  clearTimeout(webPublishTimer);
+  webPublishTimer = setTimeout(async function () {
+    if (webPublishing || !canEdit || cloudBusy || cloudDirty) return;
+    const gap = WEB_PUBLISH_MIN_GAP_MS - (Date.now() - webPublishLastAt);
+    if (gap > 0) { scheduleWebPublish(gap); return; }
+    await publishToWeb(true);
+  }, delayMs != null && delayMs > 0 ? delayMs : WEB_PUBLISH_DEBOUNCE_MS);
+}
+
+async function publishToWeb(silent) {
   const cfg = loadGhCfg();
   const btn = document.getElementById('btn-publish');
   if (!cfg.token) {
@@ -3643,6 +3672,7 @@ async function publishToWeb() {
     return;
   }
   const prev = btn ? btn.textContent : '';
+  webPublishing = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Publicando…'; }
   try {
     const html = buildPageHTML({ renameKeys: false });
@@ -3687,11 +3717,17 @@ async function publishToWeb() {
       try { m = (await res.json()).message || m; } catch (e) {}
       throw new Error(m);
     }
-    showToast({ kind: 'ok', title: 'Publicado en la web', msg: 'La página abra24ia.github.io/la_tajada2027 se actualizará en 1-2 minutos.', ttl: 9000 });
+    webPublishLastAt = Date.now();
+    if (silent) {
+      console.log('Publicación automática completada');
+    } else {
+      showToast({ kind: 'ok', title: 'Publicado en la web', msg: 'La página abra24ia.github.io/la_tajada2027 se actualizará en 1-2 minutos.', ttl: 9000 });
+    }
   } catch (e) {
     console.error(e);
     showToast({ kind: 'err', title: 'No se pudo publicar', msg: String(e.message || e), ttl: 10000 });
   } finally {
+    webPublishing = false;
     if (btn) { btn.disabled = false; btn.textContent = prev; }
   }
 }
